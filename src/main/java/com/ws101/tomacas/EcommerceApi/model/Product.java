@@ -35,13 +35,13 @@ public class Product {
     private String description;
 
     /** Price of the product in PHP. Must be a positive value. */
-    private double price;
+    private Double price;
 
     /** Category that the product belongs to (e.g., Electronics, Clothing). */
     private String category;
 
     /** Number of units currently available in stock. Must be non-negative. */
-    private int stockQuantity;
+    private Integer stockQuantity;
 
     /** URL pointing to the product image. This field is optional. */
     private String imageUrl;
