@@ -34,7 +34,4 @@ out/
 /.nb-gradle/
 
 ### VS Code ###
-.vscode/
-
-### Handoff folder (not part of the project) ###
-_jovan_push/
+.vscode/
