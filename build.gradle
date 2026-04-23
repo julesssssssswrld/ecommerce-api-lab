@@ -10,7 +10,7 @@ description = 'E-commerce API for Lab 7'
 
 java {
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(26)
+		languageVersion = JavaLanguageVersion.of(21)
 	}
 }
 
