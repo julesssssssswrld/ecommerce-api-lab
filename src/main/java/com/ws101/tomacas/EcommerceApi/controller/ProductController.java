@@ -153,6 +153,7 @@ public class ProductController {
             @PathVariable Long id,
             @RequestBody Product patch) {
 
+        validatePatchProduct(patch);
         Product patched = productService.patchProduct(id, patch)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Product with ID " + id + " was not found."));
@@ -192,7 +193,7 @@ public class ProductController {
             throw new IllegalArgumentException(
                     "Product name is required and must be at least 2 characters long.");
         }
-        if (product.getPrice() <= 0) {
+        if (product.getPrice() == null || product.getPrice() <= 0) {
             throw new IllegalArgumentException(
                     "Product price must be a positive number.");
         }
@@ -200,7 +201,36 @@ public class ProductController {
             throw new IllegalArgumentException(
                     "Product category is required.");
         }
-        if (product.getStockQuantity() < 0) {
+        if (product.getStockQuantity() == null || product.getStockQuantity() < 0) {
+            throw new IllegalArgumentException(
+                    "Stock quantity must be non-negative.");
+        }
+    }
+
+    /**
+     * Validates only the fields present in a PATCH request.
+     *
+     * Unlike full validation, this method only checks fields that
+     * were actually provided (non-null). Missing fields are left
+     * unchanged on the existing product.
+     *
+     * @param patch the partial product object to validate
+     * @throws IllegalArgumentException if any provided field has an invalid value
+     */
+    private void validatePatchProduct(Product patch) {
+        if (patch.getName() != null && patch.getName().trim().length() < 2) {
+            throw new IllegalArgumentException(
+                    "Product name must be at least 2 characters long.");
+        }
+        if (patch.getPrice() != null && patch.getPrice() <= 0) {
+            throw new IllegalArgumentException(
+                    "Product price must be a positive number.");
+        }
+        if (patch.getCategory() != null && patch.getCategory().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Product category cannot be blank.");
+        }
+        if (patch.getStockQuantity() != null && patch.getStockQuantity() < 0) {
             throw new IllegalArgumentException(
                     "Stock quantity must be non-negative.");
         }

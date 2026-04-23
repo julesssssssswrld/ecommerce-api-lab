@@ -172,9 +172,9 @@ public class ProductService {
     /**
      * Partially updates an existing product (PATCH semantics).
      *
-     * Only non-null and valid fields from the patch object are
-     * applied to the existing product. Fields that are null or
-     * have default values (0 for numbers) are left unchanged.
+     * Only non-null fields from the patch object are applied to the
+     * existing product. Fields set to {@code null} (i.e., not included
+     * in the request body) are left unchanged.
      *
      * @param id the ID of the product to patch
      * @param patch a product object containing only the fields to update
@@ -187,20 +187,20 @@ public class ProductService {
         if (existingOpt.isPresent()) {
             Product existing = existingOpt.get();
 
-            // only update fields that were actually provided (non-null, non-default)
+            // Only update fields that were actually provided (non-null)
             if (patch.getName() != null) {
                 existing.setName(patch.getName());
             }
             if (patch.getDescription() != null) {
                 existing.setDescription(patch.getDescription());
             }
-            if (patch.getPrice() > 0) {
+            if (patch.getPrice() != null) {
                 existing.setPrice(patch.getPrice());
             }
             if (patch.getCategory() != null) {
                 existing.setCategory(patch.getCategory());
             }
-            if (patch.getStockQuantity() >= 0 && patch.getStockQuantity() != existing.getStockQuantity()) {
+            if (patch.getStockQuantity() != null) {
                 existing.setStockQuantity(patch.getStockQuantity());
             }
             if (patch.getImageUrl() != null) {
