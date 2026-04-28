@@ -1,6 +1,7 @@
 package com.ws101.tomacas.EcommerceApi.controller;
 
 import com.ws101.tomacas.EcommerceApi.model.ErrorResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import jakarta.persistence.EntityNotFoundException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.NoSuchElementException;
@@ -22,7 +24,9 @@ import java.util.NoSuchElementException;
  * <p>This handler covers the following scenarios:</p>
  * <ul>
  *   <li>Product not found (404)</li>
+ *   <li>JPA entity not found (404)</li>
  *   <li>Invalid request body or malformed JSON (400)</li>
+ *   <li>Database constraint violations (400)</li>
  *   <li>Invalid method arguments or path variables (400)</li>
  *   <li>Illegal argument exceptions from business logic (400)</li>
  *   <li>Unexpected server errors (500)</li>
@@ -52,6 +56,23 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles JPA EntityNotFoundException when a database lookup fails.
+     *
+     * @param ex the exception thrown by the persistence layer
+     * @return a 404 response with error details
+     */
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleEntityNotFound(EntityNotFoundException ex) {
+        ErrorResponse error = new ErrorResponse(
+                getCurrentTimestamp(),
+                HttpStatus.NOT_FOUND.value(),
+                "Not Found",
+                ex.getMessage()
+        );
+        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * Handles invalid arguments from service layer validation.
      *
      * @param ex the exception thrown for invalid arguments
@@ -64,6 +85,24 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
                 ex.getMessage()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Handles database constraint violations (e.g., unique key conflicts,
+     * foreign key violations, or NOT NULL constraint failures).
+     *
+     * @param ex the exception thrown by the database layer
+     * @return a 400 response indicating a data integrity issue
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        ErrorResponse error = new ErrorResponse(
+                getCurrentTimestamp(),
+                HttpStatus.BAD_REQUEST.value(),
+                "Bad Request",
+                "Data integrity violation: the request conflicts with existing data or constraints."
         );
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
