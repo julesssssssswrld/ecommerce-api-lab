@@ -1,15 +1,16 @@
 # EcommerceApi — Spring Boot RESTful API
 
-A RESTful API backend for an e-commerce product catalog built with **Spring Boot 4.0.5**, using in-memory data storage via `ArrayList<Product>`.
+A RESTful API backend for an e-commerce product catalog built with **Spring Boot 4.0.5**, persisting data to a **MySQL** database via **Spring Data JPA** and **Hibernate**.
 
 > **Authors:** Jules Ian C. Tomacas & Jovan P. Atencio  
-> **Course:** WS101 — Laboratory 7
+> **Course:** WS101 — Laboratory 8 (Database Integration & Fetch API)
 
 ---
 
 ## Table of Contents
 
 - [Project Overview](#project-overview)
+- [Database Schema](#database-schema)
 - [Setup Instructions](#setup-instructions)
 - [API Endpoint Reference](#api-endpoint-reference)
 - [Sample Requests & Responses](#sample-requests--responses)
@@ -25,9 +26,62 @@ This project implements a RESTful API for managing an e-commerce product catalog
 
 - **HTTP Methods**: GET, POST, PUT, PATCH, DELETE
 - **REST Principles**: Resource-based URLs, proper status codes, JSON responses
-- **In-Memory Storage**: Products stored in `ArrayList<Product>` — no database required
+- **Database Persistence**: Products, categories, orders, and order items stored in MySQL via Spring Data JPA
+- **Entity Relationships**: One-to-Many (Category → Product, Order → OrderItem), Many-to-One (OrderItem → Product)
+- **Repository Pattern**: Spring Data JPA repositories with method naming queries and custom JPQL
 - **Input Validation**: Server-side validation for all create/update operations
-- **Error Handling**: Global exception handler with consistent error response format
+- **Error Handling**: Global exception handler covering EntityNotFoundException, DataIntegrityViolationException, and more
+- **CORS Configuration**: Frontend (Live Server) can communicate with the backend via WebMvcConfigurer
+
+---
+
+## Database Schema
+
+The application uses four tables with the following relationships:
+
+```
+┌──────────────┐       ┌──────────────────┐
+│  categories  │       │     products     │
+├──────────────┤       ├──────────────────┤
+│ id (PK)      │──1:N─→│ id (PK)          │
+│ name (UNIQUE)│       │ name             │
+└──────────────┘       │ description      │
+                       │ price            │
+                       │ category         │
+                       │ stock_quantity   │
+                       │ image_url        │
+                       │ category_id (FK) │
+                       └──────────────────┘
+                              │
+┌──────────────┐              │ N:1
+│    orders    │       ┌──────────────────┐
+├──────────────┤       │   order_items    │
+│ id (PK)      │──1:N─→├──────────────────┤
+│ customer_name│       │ id (PK)          │
+│ customer_email│      │ quantity         │
+│ total_amount │       │ price_at_purchase│
+│ order_date   │       │ order_id (FK)    │
+└──────────────┘       │ product_id (FK)  │
+                       └──────────────────┘
+```
+
+### Relationships
+
+| Relationship | Parent | Child | Type | Description |
+|---|---|---|---|---|
+| Category → Product | `categories` | `products` | One-to-Many | One category has many products |
+| Order → OrderItem | `orders` | `order_items` | One-to-Many | One order has many items |
+| OrderItem → Product | `order_items` | `products` | Many-to-One | Many items reference one product |
+
+### JPA Annotations Used
+
+- `@Entity`, `@Table` — Maps classes to database tables
+- `@Id`, `@GeneratedValue(strategy = GenerationType.IDENTITY)` — Auto-increment primary keys
+- `@OneToMany(mappedBy = ...)` — Inverse side of the relationship
+- `@ManyToOne(fetch = FetchType.LAZY)` — Owning side with lazy loading
+- `@JoinColumn(name = ...)` — Specifies the foreign key column
+- `CascadeType.ALL` — Propagates save/delete from parent to children
+- `orphanRemoval = true` — Auto-deletes children removed from parent's list
 
 ---
 
@@ -36,7 +90,14 @@ This project implements a RESTful API for managing an e-commerce product catalog
 ### Prerequisites
 
 - **Java 26+** (JDK)
+- **MySQL 8.x** (running on localhost:3306)
 - **Git**
+
+### Database Setup
+
+1. Ensure MySQL is running on `localhost:3306`
+2. The application will automatically create the `ecommerce_db` database (via `createDatabaseIfNotExist=true`)
+3. Default credentials: `root` / `root` (configurable in `application.properties`)
 
 ### How to Run
 
@@ -66,6 +127,7 @@ This project implements a RESTful API for managing an e-commerce product catalog
    ```
 
 4. The API will be available at `http://localhost:8080`
+5. On first startup, the database is automatically seeded with 10 sample products.
 
 ---
 
@@ -233,7 +295,7 @@ GET /api/v1/products/999
 
 ```json
 {
-  "timestamp": "2026-04-23T15:30:00",
+  "timestamp": "2026-04-28T15:30:00",
   "status": 404,
   "error": "Not Found",
   "message": "Product with ID 999 was not found."
@@ -249,7 +311,7 @@ GET /api/v1/products/999
 | 200  | OK                     | Successful GET, PUT, PATCH                    |
 | 201  | Created                | Successful POST (new product created)         |
 | 204  | No Content             | Successful DELETE                             |
-| 400  | Bad Request            | Invalid input, missing fields, bad JSON       |
+| 400  | Bad Request            | Invalid input, missing fields, bad JSON, DB constraint violation |
 | 404  | Not Found              | Product with given ID does not exist          |
 | 500  | Internal Server Error  | Unexpected server-side error                  |
 
@@ -261,21 +323,27 @@ GET /api/v1/products/999
 src/main/java/com/ws101/tomacas/EcommerceApi/
 ├── EcommerceApiApplication.java       # Spring Boot entry point
 ├── model/
-│   ├── Product.java                   # Product entity (7 fields)
+│   ├── Product.java                   # Product entity (JPA)
+│   ├── Category.java                  # Category entity (One-to-Many with Product)
+│   ├── Order.java                     # Order entity (One-to-Many with OrderItem)
+│   ├── OrderItem.java                 # OrderItem entity (Many-to-One with Order & Product)
 │   └── ErrorResponse.java            # Standard error response format
+├── repository/
+│   ├── ProductRepository.java         # JPA repository with custom queries
+│   └── CategoryRepository.java        # JPA repository for categories
 ├── service/
-│   └── ProductService.java           # Business logic & in-memory storage
+│   └── ProductService.java           # Business logic (backed by JPA repository)
 ├── controller/
 │   ├── ProductController.java        # REST API endpoints
-│   └── GlobalExceptionHandler.java   # Centralized error handling
-└── config/                            # Reserved for future configuration
+│   └── GlobalExceptionHandler.java   # Centralized error handling (incl. DB exceptions)
+└── config/
+    └── WebConfig.java                 # CORS configuration for frontend integration
 ```
 
 ---
 
 ## Known Limitations
 
-- **In-Memory Storage**: All product data is stored in an `ArrayList<Product>`. Data is lost when the application restarts. There is no persistence layer or database.
 - **No Authentication**: The API does not implement any authentication or authorization.
-- **Single-Threaded Safety**: While the ID counter uses `AtomicLong`, the `ArrayList` itself is not synchronized. This is acceptable for this lab's scope but would need addressing in production.
 - **No Pagination**: The GET all products endpoint returns every product at once. For large datasets, pagination would be needed.
+- **Order API**: The Order and OrderItem entities are defined for schema demonstration purposes. Full CRUD endpoints for orders are not yet implemented.
