@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.ws101.tomacas'
 version = '0.0.1-SNAPSHOT'
-description = 'E-commerce API for Lab 7'
+description = 'E-commerce API for Lab 8 — Database Integration'
 
 java {
 	toolchain {
@@ -20,6 +20,8 @@ repositories {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	runtimeOnly 'com.mysql:mysql-connector-j'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
