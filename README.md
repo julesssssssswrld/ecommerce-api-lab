@@ -347,3 +347,9 @@ src/main/java/com/ws101/tomacas/EcommerceApi/
 - **No Authentication**: The API does not implement any authentication or authorization.
 - **No Pagination**: The GET all products endpoint returns every product at once. For large datasets, pagination would be needed.
 - **Order API**: The Order and OrderItem entities are defined for schema demonstration purposes. Full CRUD endpoints for orders are not yet implemented.
+
+---
+
+## Development Notes
+
+The core architecture, API endpoints, fundamental controllers, and initial service logic were developed manually by the project members. To ensure adherence to enterprise best practices and to handle the highly complex technical requirements—such as intricate Spring Data JPA relationship mapping, cascade persistence, and advanced CORS configuration—AI assistance was utilized for targeted technical guidance and boilerplate generation.
