@@ -1,319 +1,219 @@
-# EcommerceApi — Spring Boot RESTful API
+# E-Commerce REST API — Lab 9 (Security & Validation)
 
-A RESTful API backend for an e-commerce product catalog built with **Spring Boot 4.0.5**, persisting data to a **MySQL** database via **Spring Data JPA** and **Hibernate**.
+A RESTful API backend for an e-commerce product catalog built with **Spring Boot 4.0.5**, secured with **Spring Security** (session-based authentication) and **Bean Validation**. Data is persisted to a MySQL database via Spring Data JPA and Hibernate.
 
-> **Authors:** Jules Ian C. Tomacas & Jovan P. Atencio  
-> **Course:** WS101 — Laboratory 8 (Database Integration & Fetch API)
+**Authors:** Jules Ian C. Tomacas & Jovan P. Atencio  
+**Course:** WS101 — Laboratory 9 (Securing the API with Sessions & Input Validation)
 
 ---
 
 ## Table of Contents
 
-- [Project Overview](#project-overview)
-- [Database Schema](#database-schema)
+- [Security Architecture](#security-architecture)
+- [Validation Rules](#validation-rules)
 - [Setup Instructions](#setup-instructions)
 - [API Endpoint Reference](#api-endpoint-reference)
-- [Sample Requests & Responses](#sample-requests--responses)
-- [HTTP Status Codes](#http-status-codes)
+- [Database Schema](#database-schema)
 - [Project Structure](#project-structure)
-- [Known Limitations](#known-limitations)
+- [Development Notes](#development-notes)
 
 ---
 
-## Project Overview
+## Security Architecture
 
-This project implements a RESTful API for managing an e-commerce product catalog. It demonstrates:
+### Session-Based Authentication (How It Works)
 
-- **HTTP Methods**: GET, POST, PUT, PATCH, DELETE
-- **REST Principles**: Resource-based URLs, proper status codes, JSON responses
-- **Database Persistence**: Products, categories, orders, and order items stored in MySQL via Spring Data JPA
-- **Entity Relationships**: One-to-Many (Category → Product, Order → OrderItem), Many-to-One (OrderItem → Product)
-- **Repository Pattern**: Spring Data JPA repositories with method naming queries and custom JPQL
-- **Input Validation**: Server-side validation for all create/update operations
-- **Error Handling**: Global exception handler covering EntityNotFoundException, DataIntegrityViolationException, and more
-- **CORS Configuration**: Frontend (Live Server) can communicate with the backend via WebMvcConfigurer
+This API uses **HTTP Session-Based Authentication** with Form Login — not JWT tokens.
+
+```
+┌──────────┐                    ┌──────────────┐
+│  Client  │  POST /login       │  Spring Boot │
+│ (Browser)│ ──────────────────>│    Server    │
+│          │  username+password  │              │
+│          │                    │  ┌──────────┐ │
+│          │  Set-Cookie:       │  │ Security │ │
+│          │ <──────────────────│  │  Filter  │ │
+│          │  JSESSIONID=abc123 │  │  Chain   │ │
+│          │                    │  └──────────┘ │
+│          │                    │              │
+│          │  GET /api/v1/orders│  ┌──────────┐ │
+│          │ ──────────────────>│  │ Session  │ │
+│          │  Cookie:           │  │  Store   │ │
+│          │  JSESSIONID=abc123 │  │(Server)  │ │
+│          │                    │  └──────────┘ │
+└──────────┘                    └──────────────┘
+```
+
+1. **Login Flow**: The client sends a `POST /login` with `username` and `password` (plus a CSRF token). Spring Security verifies the credentials against the database (BCrypt hash comparison).
+2. **Session Creation**: On success, the server creates an HTTP session and sends back a `JSESSIONID` cookie.
+3. **Subsequent Requests**: The browser automatically includes the `JSESSIONID` cookie with every request. Spring Security reads the session to identify the user.
+4. **Logout**: `POST /logout` invalidates the session and clears the cookie.
+5. **CSRF Protection**: All state-changing requests (POST, PUT, DELETE, PATCH) require a valid CSRF token, delivered via a cookie named `XSRF-TOKEN`.
+
+### Role-Based Access Control (RBAC)
+
+| Role    | Permissions |
+|---------|-------------|
+| `USER`  | Browse products, place orders, view own account |
+| `SELLER`| All USER permissions + create/update products |
+| `ADMIN` | All SELLER permissions + delete products, view all orders, manage users |
+
+### Password Security
+
+- Passwords are **never stored in plain text**.
+- BCrypt adaptive hashing algorithm is used via `BCryptPasswordEncoder`.
+- Each hash automatically includes a unique salt.
 
 ---
 
-## Database Schema
+## Validation Rules
 
-The application uses four tables with the following relationships:
+Validation is enforced using **Jakarta Bean Validation** (`spring-boot-starter-validation`) with `@Valid` on controller method parameters.
 
+### User Registration (`RegisterUserDto`)
+
+| Field      | Constraint                         | Error Message |
+|------------|------------------------------------|---------------|
+| `username` | `@NotBlank`, `@Size(min=3, max=20)` | "Username must be between 3 and 20 characters" |
+| `password` | `@NotBlank`, `@Size(min=8)`        | "Password must be at least 8 characters long" |
+| `role`     | `@NotNull`                         | "Role is required" |
+
+### Product Creation (`CreateProductDto`)
+
+| Field           | Constraint                              | Error Message |
+|-----------------|-----------------------------------------|---------------|
+| `name`          | `@NotBlank`, `@Size(min=2, max=100)`    | "Product name must be between 2 and 100 characters" |
+| `description`   | `@Size(max=500)`                        | "Description must not exceed 500 characters" |
+| `price`         | `@NotNull`, `@Positive`                 | "Product price must be a positive number" |
+| `category`      | `@NotBlank`                             | "Product category is required" |
+| `stockQuantity` | `@NotNull`, `@PositiveOrZero`           | "Stock quantity must be non-negative" |
+
+### Order Creation (`CreateOrderDto`)
+
+| Field           | Constraint                     | Error Message |
+|-----------------|--------------------------------|---------------|
+| `customerName`  | `@NotBlank`                    | "Customer name is required" |
+| `customerEmail` | `@NotBlank`, `@Email`          | "Customer email must be a valid email address" |
+| `items`         | `@NotEmpty`                    | "Order must contain at least one item" |
+| `items[].productId` | `@NotNull`                | "Product ID is required" |
+| `items[].quantity`   | `@NotNull`, `@Positive`   | "Quantity must be a positive number" |
+
+### Validation Error Response Format
+
+When validation fails, the API returns a `400 Bad Request` with:
+
+```json
+{
+  "timestamp": "2026-04-29T19:30:00",
+  "status": 400,
+  "error": "Validation Failed",
+  "errors": [
+    "Field 'price': Product price must be a positive number",
+    "Field 'name': Product name is required"
+  ]
+}
 ```
-┌──────────────┐       ┌──────────────────┐
-│  categories  │       │     products     │
-├──────────────┤       ├──────────────────┤
-│ id (PK)      │──1:N─→│ id (PK)          │
-│ name (UNIQUE)│       │ name             │
-└──────────────┘       │ description      │
-                       │ price            │
-                       │ category         │
-                       │ stock_quantity   │
-                       │ image_url        │
-                       │ category_id (FK) │
-                       └──────────────────┘
-                              │
-┌──────────────┐              │ N:1
-│    orders    │       ┌──────────────────┐
-├──────────────┤       │   order_items    │
-│ id (PK)      │──1:N─→├──────────────────┤
-│ customer_name│       │ id (PK)          │
-│ customer_email│      │ quantity         │
-│ total_amount │       │ price_at_purchase│
-│ order_date   │       │ order_id (FK)    │
-└──────────────┘       │ product_id (FK)  │
-                       └──────────────────┘
-```
-
-### Relationships
-
-| Relationship | Parent | Child | Type | Description |
-|---|---|---|---|---|
-| Category → Product | `categories` | `products` | One-to-Many | One category has many products |
-| Order → OrderItem | `orders` | `order_items` | One-to-Many | One order has many items |
-| OrderItem → Product | `order_items` | `products` | Many-to-One | Many items reference one product |
-
-### JPA Annotations Used
-
-- `@Entity`, `@Table` — Maps classes to database tables
-- `@Id`, `@GeneratedValue(strategy = GenerationType.IDENTITY)` — Auto-increment primary keys
-- `@OneToMany(mappedBy = ...)` — Inverse side of the relationship
-- `@ManyToOne(fetch = FetchType.LAZY)` — Owning side with lazy loading
-- `@JoinColumn(name = ...)` — Specifies the foreign key column
-- `CascadeType.ALL` — Propagates save/delete from parent to children
-- `orphanRemoval = true` — Auto-deletes children removed from parent's list
 
 ---
 
 ## Setup Instructions
 
 ### Prerequisites
-
-- **Java 26+** (JDK)
-- **MySQL 8.x** (running on localhost:3306)
-- **Git**
+- Java 26+ (JDK)
+- MySQL 8.x (running on `localhost:3306`)
+- Git
 
 ### Database Setup
-
 1. Ensure MySQL is running on `localhost:3306`
-2. The application will automatically create the `ecommerce_db` database (via `createDatabaseIfNotExist=true`)
+2. The application automatically creates the `ecommerce_db` database
 3. Default credentials: `root` / `root` (configurable in `application.properties`)
 
 ### How to Run
-
-1. **Clone the repository:**
-
-   ```bash
+1. Clone the repository:
+   ```
    git clone https://github.com/julesssssssswrld/ecommerce-api-lab.git
    cd ecommerce-api-lab
    ```
-
-2. **Build the project** (Gradle wrapper is included, no need to install Gradle):
-
-   ```bash
-   ./gradlew build -x test
+2. Build the project:
    ```
-
-   On Windows:
-
-   ```bash
    .\gradlew.bat build -x test
    ```
-
-3. **Run the application:**
-
-   ```bash
-   ./gradlew bootRun
+3. Run the application:
    ```
-
-4. The API will be available at `http://localhost:8080`
-5. On first startup, the database is automatically seeded with 10 sample products.
+   .\gradlew.bat bootRun
+   ```
+4. The API is available at `http://localhost:8080`
 
 ---
 
 ## API Endpoint Reference
 
-| Method   | Path                             | Description                     | Request Body | Status Code |
-|----------|----------------------------------|---------------------------------|:------------:|:-----------:|
-| `GET`    | `/api/v1/products`               | Retrieve all products           | —            | 200         |
-| `GET`    | `/api/v1/products/{id}`          | Retrieve a product by ID        | —            | 200 / 404   |
-| `GET`    | `/api/v1/products/filter`        | Filter products by criteria     | —            | 200 / 400   |
-| `POST`   | `/api/v1/products`               | Create a new product            | JSON         | 201 / 400   |
-| `PUT`    | `/api/v1/products/{id}`          | Replace an entire product       | JSON         | 200 / 404   |
-| `PATCH`  | `/api/v1/products/{id}`          | Partially update a product      | JSON         | 200 / 404   |
-| `DELETE` | `/api/v1/products/{id}`          | Delete a product                | —            | 204 / 404   |
+### Authentication
 
-### Filter Parameters
+| Method | Endpoint              | Auth Required | Description |
+|--------|-----------------------|---------------|-------------|
+| POST   | `/api/v1/auth/register` | No          | Register a new user |
+| POST   | `/login`              | No            | Log in (form login) |
+| POST   | `/logout`             | Yes           | Log out (invalidate session) |
+| GET    | `/api/v1/auth/me`     | Yes           | Get current user info |
 
-The filter endpoint accepts two query parameters:
+### Products
 
-| Parameter     | Description                                               |
-|---------------|-----------------------------------------------------------|
-| `filterType`  | The criteria to filter by: `category`, `name`, or `price` |
-| `filterValue` | The value to match (e.g., `Electronics`, `Keyboard`, `2000`) |
+| Method | Endpoint                    | Auth Required | Role Required      | Description |
+|--------|-----------------------------|---------------|--------------------|-------------|
+| GET    | `/api/v1/products`          | No            | —                  | List all products |
+| GET    | `/api/v1/products/{id}`     | No            | —                  | Get product by ID |
+| GET    | `/api/v1/products/filter`   | No            | —                  | Filter products |
+| POST   | `/api/v1/products`          | Yes           | ADMIN or SELLER    | Create product |
+| PUT    | `/api/v1/products/{id}`     | Yes           | ADMIN or SELLER    | Replace product |
+| PATCH  | `/api/v1/products/{id}`     | Yes           | ADMIN or SELLER    | Update product fields |
+| DELETE | `/api/v1/products/{id}`     | Yes           | ADMIN only         | Delete product |
 
-**Example:** `GET /api/v1/products/filter?filterType=category&filterValue=Electronics`
+### Orders
 
----
-
-## Sample Requests & Responses
-
-### GET All Products
-
-```
-GET /api/v1/products
-```
-
-**Response (200 OK):**
-
-```json
-[
-  {
-    "id": 1,
-    "name": "Wireless Bluetooth Headphones",
-    "description": "Over-ear noise-cancelling headphones with 30-hour battery life.",
-    "price": 2499.0,
-    "category": "Electronics",
-    "stockQuantity": 45,
-    "imageUrl": "https://placehold.co/400x400?text=Headphones"
-  },
-  ...
-]
-```
-
-### GET Product by ID
-
-```
-GET /api/v1/products/1
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "id": 1,
-  "name": "Wireless Bluetooth Headphones",
-  "description": "Over-ear noise-cancelling headphones with 30-hour battery life.",
-  "price": 2499.0,
-  "category": "Electronics",
-  "stockQuantity": 45,
-  "imageUrl": "https://placehold.co/400x400?text=Headphones"
-}
-```
-
-### POST Create Product
-
-```
-POST /api/v1/products
-Content-Type: application/json
-```
-
-```json
-{
-  "name": "Gaming Mouse",
-  "description": "RGB gaming mouse with 16000 DPI sensor.",
-  "price": 2499.00,
-  "category": "Electronics",
-  "stockQuantity": 80,
-  "imageUrl": "https://placehold.co/400x400?text=Mouse"
-}
-```
-
-**Response (201 Created):**
-
-```json
-{
-  "id": 11,
-  "name": "Gaming Mouse",
-  "description": "RGB gaming mouse with 16000 DPI sensor.",
-  "price": 2499.0,
-  "category": "Electronics",
-  "stockQuantity": 80,
-  "imageUrl": "https://placehold.co/400x400?text=Mouse"
-}
-```
-
-### PUT Update Product
-
-```
-PUT /api/v1/products/11
-Content-Type: application/json
-```
-
-```json
-{
-  "name": "Updated Gaming Mouse",
-  "description": "Wireless RGB gaming mouse with 25000 DPI sensor.",
-  "price": 3299.00,
-  "category": "Electronics",
-  "stockQuantity": 50,
-  "imageUrl": "https://placehold.co/400x400?text=MouseV2"
-}
-```
-
-**Response (200 OK):** Returns the updated product object.
-
-### PATCH Partial Update
-
-```
-PATCH /api/v1/products/5
-Content-Type: application/json
-```
-
-```json
-{
-  "price": 1399.00,
-  "stockQuantity": 70
-}
-```
-
-**Response (200 OK):** Returns the product with only the specified fields updated.
-
-### DELETE Product
-
-```
-DELETE /api/v1/products/10
-```
-
-**Response:** `204 No Content` (empty body)
-
-### Filter by Category
-
-```
-GET /api/v1/products/filter?filterType=category&filterValue=Electronics
-```
-
-**Response (200 OK):** Returns an array of products in the "Electronics" category.
-
-### Error Response Example
-
-```
-GET /api/v1/products/999
-```
-
-**Response (404 Not Found):**
-
-```json
-{
-  "timestamp": "2026-04-28T15:30:00",
-  "status": 404,
-  "error": "Not Found",
-  "message": "Product with ID 999 was not found."
-}
-```
+| Method | Endpoint              | Auth Required | Role Required | Description |
+|--------|-----------------------|---------------|---------------|-------------|
+| GET    | `/api/v1/orders`      | Yes           | ADMIN only    | List all orders |
+| GET    | `/api/v1/orders/{id}` | Yes           | Authenticated | Get order by ID |
+| POST   | `/api/v1/orders`      | Yes           | Authenticated | Create new order |
 
 ---
 
-## HTTP Status Codes
+## Database Schema
 
-| Code | Meaning                | When It's Used                               |
-|------|------------------------|----------------------------------------------|
-| 200  | OK                     | Successful GET, PUT, PATCH                    |
-| 201  | Created                | Successful POST (new product created)         |
-| 204  | No Content             | Successful DELETE                             |
-| 400  | Bad Request            | Invalid input, missing fields, bad JSON, DB constraint violation |
-| 404  | Not Found              | Product with given ID does not exist          |
-| 500  | Internal Server Error  | Unexpected server-side error                  |
+```
+┌──────────────┐     ┌──────────────────┐
+│   categories │     │     products     │
+├──────────────┤     ├──────────────────┤
+│ id (PK)      │─1:N→│ id (PK)          │
+│ name (UNIQUE)│     │ name             │
+└──────────────┘     │ description      │
+                     │ price            │
+                     │ category         │
+                     │ stock_quantity   │
+                     │ image_url        │
+                     │ category_id (FK) │
+                     └──────────────────┘
+
+┌──────────────┐     ┌──────────────────┐
+│    orders    │     │   order_items    │
+├──────────────┤     ├──────────────────┤
+│ id (PK)      │─1:N→│ id (PK)          │
+│ customer_name│     │ quantity         │
+│ customer_email│    │ price_at_purchase│
+│ total_amount │     │ order_id (FK)    │
+│ order_date   │     │ product_id (FK)  │
+└──────────────┘     └──────────────────┘
+
+┌──────────────┐
+│    users     │
+├──────────────┤
+│ id (PK)      │
+│ username     │
+│ password     │  ← BCrypt hashed
+│ role         │  ← USER, SELLER, ADMIN
+└──────────────┘
+```
 
 ---
 
@@ -321,35 +221,48 @@ GET /api/v1/products/999
 
 ```
 src/main/java/com/ws101/tomacas/EcommerceApi/
-├── EcommerceApiApplication.java       # Spring Boot entry point
-├── model/
-│   ├── Product.java                   # Product entity (JPA)
-│   ├── Category.java                  # Category entity (One-to-Many with Product)
-│   ├── Order.java                     # Order entity (One-to-Many with OrderItem)
-│   ├── OrderItem.java                 # OrderItem entity (Many-to-One with Order & Product)
-│   └── ErrorResponse.java            # Standard error response format
-├── repository/
-│   ├── ProductRepository.java         # JPA repository with custom queries
-│   └── CategoryRepository.java        # JPA repository for categories
-├── service/
-│   └── ProductService.java           # Business logic (backed by JPA repository)
+├── EcommerceApiApplication.java      # Spring Boot entry point
+├── config/
+│   ├── SecurityConfig.java           # Security filter chain, RBAC rules
+│   ├── WebConfig.java                # CORS configuration
+│   └── package-info.java
 ├── controller/
-│   ├── ProductController.java        # REST API endpoints
-│   └── GlobalExceptionHandler.java   # Centralized error handling (incl. DB exceptions)
-└── config/
-    └── WebConfig.java                 # CORS configuration for frontend integration
+│   ├── AuthController.java           # Registration & current user endpoints
+│   ├── OrderController.java          # Order CRUD (secured)
+│   ├── ProductController.java        # Product CRUD (role-based)
+│   ├── GlobalExceptionHandler.java   # Validation + security error handler
+│   └── package-info.java
+├── dto/
+│   ├── RegisterUserDto.java          # Registration request (validated)
+│   ├── CreateProductDto.java         # Product creation (validated)
+│   ├── UpdateProductDto.java         # Product patch (validated)
+│   ├── CreateOrderDto.java           # Order creation (validated)
+│   └── ProductListingEntry.java      # Lightweight product listing DTO
+├── model/
+│   ├── User.java                     # User entity (implements UserDetails)
+│   ├── Role.java                     # USER, SELLER, ADMIN enum
+│   ├── Product.java                  # Product entity
+│   ├── Category.java                 # Category entity
+│   ├── Order.java                    # Order entity
+│   ├── OrderItem.java                # Order item entity
+│   ├── ErrorResponse.java            # Standard error response model
+│   └── package-info.java
+├── repository/
+│   ├── UserRepository.java           # User data access
+│   ├── ProductRepository.java        # Product data access
+│   ├── CategoryRepository.java       # Category data access
+│   ├── OrderRepository.java          # Order data access
+│   └── package-info.java
+└── service/
+    ├── CustomUserDetailsService.java  # Loads users for Spring Security
+    ├── AuthService.java              # Registration logic
+    ├── ProductService.java           # Product business logic
+    ├── OrderService.java             # Order business logic
+    └── package-info.java
 ```
-
----
-
-## Known Limitations
-
-- **No Authentication**: The API does not implement any authentication or authorization.
-- **No Pagination**: The GET all products endpoint returns every product at once. For large datasets, pagination would be needed.
-- **Order API**: The Order and OrderItem entities are defined for schema demonstration purposes. Full CRUD endpoints for orders are not yet implemented.
 
 ---
 
 ## Development Notes
 
-The core architecture, API endpoints, fundamental controllers, and initial service logic were developed manually by the project members. To ensure adherence to enterprise best practices and to handle the highly complex technical requirements—such as intricate Spring Data JPA relationship mapping, cascade persistence, and advanced CORS configuration—AI assistance was utilized for targeted technical guidance and boilerplate generation.
+The core backend architecture, entity relationships, and REST controller design were developed manually by the project members. For the complex integration of Spring Security's session-based authentication with CSRF token handling and the implementation of Bean Validation with custom error responses, AI assistance was utilized for targeted guidance and code refinement.
