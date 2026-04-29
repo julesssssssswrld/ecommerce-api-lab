@@ -5,6 +5,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -12,6 +14,9 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import jakarta.persistence.EntityNotFoundException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
 /**
@@ -28,7 +33,8 @@ import java.util.NoSuchElementException;
  *   <li>Invalid request body or malformed JSON (400)</li>
  *   <li>Database constraint violations (400)</li>
  *   <li>Invalid method arguments or path variables (400)</li>
- *   <li>Illegal argument exceptions from business logic (400)</li>
+ *   <li>Bean Validation constraint violations (400)</li>
+ *   <li>Access denied / forbidden (403)</li>
  *   <li>Unexpected server errors (500)</li>
  * </ul>
  *
@@ -171,5 +177,54 @@ public class GlobalExceptionHandler {
      */
     private String getCurrentTimestamp() {
         return LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    /**
+     * Handles Bean Validation errors thrown when {@code @Valid} fails.
+     *
+     * <p>Extracts individual field error messages and returns them
+     * as a structured JSON response with status 400 Bad Request.</p>
+     *
+     * @param ex the validation exception containing field errors
+     * @return a 400 response with a list of validation error messages
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidationErrors(
+            MethodArgumentNotValidException ex) {
+
+        List<String> errors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(fieldError -> "Field '" + fieldError.getField()
+                        + "': " + fieldError.getDefaultMessage())
+                .toList();
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", getCurrentTimestamp());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Validation Failed");
+        body.put("errors", errors);
+
+        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Handles access denied exceptions (403 Forbidden).
+     *
+     * <p>Thrown when an authenticated user tries to access a
+     * resource they do not have permission for.</p>
+     *
+     * @param ex the access denied exception
+     * @return a 403 response with error details
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
+        ErrorResponse error = new ErrorResponse(
+                getCurrentTimestamp(),
+                HttpStatus.FORBIDDEN.value(),
+                "Forbidden",
+                "You do not have permission to access this resource."
+        );
+        return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
     }
 }
