@@ -4,6 +4,7 @@ import com.ws101.tomacas.EcommerceApi.model.Product;
 import com.ws101.tomacas.EcommerceApi.service.ProductService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -107,6 +108,7 @@ public class ProductController {
      * @throws IllegalArgumentException if required fields are missing or invalid
      */
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
     public ResponseEntity<Product> createProduct(@RequestBody Product product) {
         validateProduct(product);
         Product created = productService.createProduct(product);
@@ -126,6 +128,7 @@ public class ProductController {
      * @throws IllegalArgumentException if required fields are missing or invalid
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
     public ResponseEntity<Product> updateProduct(
             @PathVariable Long id,
             @RequestBody Product product) {
@@ -149,6 +152,7 @@ public class ProductController {
      * @throws NoSuchElementException if no product with the given ID exists
      */
     @PatchMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
     public ResponseEntity<Product> patchProduct(
             @PathVariable Long id,
             @RequestBody Product patch) {
@@ -170,6 +174,7 @@ public class ProductController {
      * @throws NoSuchElementException if no product with the given ID exists
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
         boolean deleted = productService.deleteProduct(id);
         if (!deleted) {
