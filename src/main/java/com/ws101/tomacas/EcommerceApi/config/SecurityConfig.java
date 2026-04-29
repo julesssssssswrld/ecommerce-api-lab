@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Spring Security configuration for session-based authentication.
@@ -115,8 +116,18 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
 
-            // Enable form login with default settings
-            .formLogin(Customizer.withDefaults())
+            // Exception handling for REST API
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint((request, response, authException) -> 
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")
+                )
+            )
+
+            // Enable form login with REST-friendly success/failure handlers
+            .formLogin(form -> form
+                .successHandler((request, response, authentication) -> response.setStatus(HttpServletResponse.SC_OK))
+                .failureHandler((request, response, exception) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentication Failed"))
+            )
 
             // Enable logout with session invalidation
             .logout(logout -> logout
