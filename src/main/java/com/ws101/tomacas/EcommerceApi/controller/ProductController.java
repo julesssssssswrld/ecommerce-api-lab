@@ -2,6 +2,7 @@ package com.ws101.tomacas.EcommerceApi.controller;
 
 import com.ws101.tomacas.EcommerceApi.model.Product;
 import com.ws101.tomacas.EcommerceApi.service.ProductService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -109,7 +110,7 @@ public class ProductController {
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
-    public ResponseEntity<Product> createProduct(@RequestBody Product product) {
+    public ResponseEntity<Product> createProduct(@Valid @RequestBody Product product) {
         validateProduct(product);
         Product created = productService.createProduct(product);
         return new ResponseEntity<>(created, HttpStatus.CREATED);

@@ -3,6 +3,7 @@ package com.ws101.tomacas.EcommerceApi.controller;
 import com.ws101.tomacas.EcommerceApi.dto.RegisterUserDto;
 import com.ws101.tomacas.EcommerceApi.model.User;
 import com.ws101.tomacas.EcommerceApi.service.AuthService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -46,7 +47,7 @@ public class AuthController {
      * @return a 201 Created response with the new user's info
      */
     @PostMapping("/register")
-    public ResponseEntity<Map<String, Object>> register(@RequestBody RegisterUserDto dto) {
+    public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody RegisterUserDto dto) {
         User user = authService.register(dto);
 
         // Return user info without the password hash
