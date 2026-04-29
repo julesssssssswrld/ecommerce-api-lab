@@ -37,6 +37,7 @@ public class WebConfig implements WebMvcConfigurer {
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        // CORS for API endpoints
         registry.addMapping("/api/**")
                 .allowedOrigins(
                         "http://localhost:5500",
@@ -45,7 +46,30 @@ public class WebConfig implements WebMvcConfigurer {
                         "http://127.0.0.1:5501"
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                .allowedHeaders("Authorization", "Content-Type")
+                .allowedHeaders("*")
+                .allowCredentials(true);
+
+        // CORS for login/logout (session-based auth)
+        registry.addMapping("/login")
+                .allowedOrigins(
+                        "http://localhost:5500",
+                        "http://127.0.0.1:5500",
+                        "http://localhost:5501",
+                        "http://127.0.0.1:5501"
+                )
+                .allowedMethods("GET", "POST", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true);
+
+        registry.addMapping("/logout")
+                .allowedOrigins(
+                        "http://localhost:5500",
+                        "http://127.0.0.1:5500",
+                        "http://localhost:5501",
+                        "http://127.0.0.1:5501"
+                )
+                .allowedMethods("GET", "POST", "OPTIONS")
+                .allowedHeaders("*")
                 .allowCredentials(true);
     }
 }
