@@ -112,6 +112,25 @@ public class ProductService {
                 "Ergonomic wireless mouse with adjustable DPI up to 4000.",
                 1199.00, "Electronics", 65,
                 "https://placehold.co/400x400?text=Mouse", null));
+
+        // Original proof-of-concept products from the frontend
+        productRepository.save(new Product(null,
+                "Apple Airpods Pro 2",
+                "Premium noise cancelling earbuds. Sounds really good trust me bro.",
+                10990.00, "Electronics", 25,
+                "https://placehold.co/400x400?text=Airpods", null));
+
+        productRepository.save(new Product(null,
+                "Apple Watch (Cherry Ultra Edition)",
+                "The ultimate smartwatch for the adventurous. Cherry-themed design.",
+                69420.00, "Electronics", 10,
+                "https://placehold.co/400x400?text=AppleWatch", null));
+
+        productRepository.save(new Product(null,
+                "Phone Case",
+                "Durable protective phone case with sleek matte finish.",
+                149.00, "Accessories", 300,
+                "https://placehold.co/400x400?text=PhoneCase", null));
     }
 
     /**
