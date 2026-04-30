@@ -1,12 +1,17 @@
 package com.ws101.tomacas.EcommerceApi.controller;
 
+import com.ws101.tomacas.EcommerceApi.dto.CreateOrderDto;
 import com.ws101.tomacas.EcommerceApi.model.Order;
+import com.ws101.tomacas.EcommerceApi.model.OrderItem;
+import com.ws101.tomacas.EcommerceApi.model.Product;
 import com.ws101.tomacas.EcommerceApi.service.OrderService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -60,12 +65,34 @@ public class OrderController {
     /**
      * Creates a new order. Requires the user to be authenticated.
      *
-     * @param order the order data from the request body
+     * <p>Validates the incoming DTO using Bean Validation, then
+     * converts it to Order and OrderItem entities before
+     * delegating to the service layer.</p>
+     *
+     * @param dto the validated order creation data
      * @return a 201 Created response with the new order
      */
     @PostMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Order> createOrder(@RequestBody Order order) {
+    public ResponseEntity<Order> createOrder(@Valid @RequestBody CreateOrderDto dto) {
+        Order order = new Order();
+        order.setCustomerName(dto.getCustomerName());
+        order.setCustomerEmail(dto.getCustomerEmail());
+
+        List<OrderItem> items = new ArrayList<>();
+        for (CreateOrderDto.OrderItemDto itemDto : dto.getItems()) {
+            OrderItem item = new OrderItem();
+            item.setQuantity(itemDto.getQuantity());
+
+            // Set the product reference (service will resolve the full entity)
+            Product productRef = new Product();
+            productRef.setId(itemDto.getProductId());
+            item.setProduct(productRef);
+
+            items.add(item);
+        }
+        order.setOrderItems(items);
+
         Order created = orderService.createOrder(order);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }

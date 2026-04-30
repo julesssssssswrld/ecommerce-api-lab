@@ -1,5 +1,7 @@
 package com.ws101.tomacas.EcommerceApi.controller;
 
+import com.ws101.tomacas.EcommerceApi.dto.CreateProductDto;
+import com.ws101.tomacas.EcommerceApi.dto.UpdateProductDto;
 import com.ws101.tomacas.EcommerceApi.model.Product;
 import com.ws101.tomacas.EcommerceApi.service.ProductService;
 import jakarta.validation.Valid;
@@ -101,17 +103,24 @@ public class ProductController {
     /**
      * Creates a new product in the catalog.
      *
-     * Validates the incoming product data before delegating
-     * creation to the service layer. Returns 201 Created on success.
+     * Validates the incoming DTO using Bean Validation annotations
+     * before converting it to an entity and delegating creation to
+     * the service layer. Returns 201 Created on success.
      *
-     * @param product the product data from the request body
+     * @param dto the validated product creation data
      * @return a 201 Created response with the newly created product
-     * @throws IllegalArgumentException if required fields are missing or invalid
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
-    public ResponseEntity<Product> createProduct(@Valid @RequestBody Product product) {
-        validateProduct(product);
+    public ResponseEntity<Product> createProduct(@Valid @RequestBody CreateProductDto dto) {
+        Product product = new Product();
+        product.setName(dto.getName());
+        product.setDescription(dto.getDescription());
+        product.setPrice(dto.getPrice());
+        product.setCategory(dto.getCategory());
+        product.setStockQuantity(dto.getStockQuantity());
+        product.setImageUrl(dto.getImageUrl());
+
         Product created = productService.createProduct(product);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
@@ -119,22 +128,28 @@ public class ProductController {
     /**
      * Replaces an existing product entirely (PUT semantics).
      *
-     * The entire product object is replaced with the new data.
-     * All fields must be provided in the request body.
+     * Validates the incoming DTO, converts it to an entity, and
+     * replaces all fields. All required fields must be provided.
      *
      * @param id the ID of the product to replace
-     * @param product the new product data
+     * @param dto the validated product data
      * @return a 200 OK response with the updated product
      * @throws NoSuchElementException if no product with the given ID exists
-     * @throws IllegalArgumentException if required fields are missing or invalid
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
     public ResponseEntity<Product> updateProduct(
             @PathVariable Long id,
-            @RequestBody Product product) {
+            @Valid @RequestBody CreateProductDto dto) {
 
-        validateProduct(product);
+        Product product = new Product();
+        product.setName(dto.getName());
+        product.setDescription(dto.getDescription());
+        product.setPrice(dto.getPrice());
+        product.setCategory(dto.getCategory());
+        product.setStockQuantity(dto.getStockQuantity());
+        product.setImageUrl(dto.getImageUrl());
+
         Product updated = productService.updateProduct(id, product)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Product with ID " + id + " was not found."));
@@ -145,10 +160,10 @@ public class ProductController {
      * Partially updates an existing product (PATCH semantics).
      *
      * Only the fields included in the request body will be updated.
-     * Fields that are null or have default values are ignored.
+     * Validates any provided field via Bean Validation on the DTO.
      *
      * @param id the ID of the product to patch
-     * @param patch a partial product object with fields to update
+     * @param dto a partial product DTO with fields to update
      * @return a 200 OK response with the patched product
      * @throws NoSuchElementException if no product with the given ID exists
      */
@@ -156,9 +171,16 @@ public class ProductController {
     @PreAuthorize("hasAnyRole('ADMIN', 'SELLER')")
     public ResponseEntity<Product> patchProduct(
             @PathVariable Long id,
-            @RequestBody Product patch) {
+            @Valid @RequestBody UpdateProductDto dto) {
 
-        validatePatchProduct(patch);
+        Product patch = new Product();
+        patch.setName(dto.getName());
+        patch.setDescription(dto.getDescription());
+        patch.setPrice(dto.getPrice());
+        patch.setCategory(dto.getCategory());
+        patch.setStockQuantity(dto.getStockQuantity());
+        patch.setImageUrl(dto.getImageUrl());
+
         Product patched = productService.patchProduct(id, patch)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Product with ID " + id + " was not found."));
@@ -185,60 +207,4 @@ public class ProductController {
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Validates product fields for POST and PUT requests.
-     *
-     * Checks that required fields are present and that numeric
-     * values are within acceptable ranges.
-     *
-     * @param product the product to validate
-     * @throws IllegalArgumentException if any validation rule is violated
-     */
-    private void validateProduct(Product product) {
-        if (product.getName() == null || product.getName().trim().length() < 2) {
-            throw new IllegalArgumentException(
-                    "Product name is required and must be at least 2 characters long.");
-        }
-        if (product.getPrice() == null || product.getPrice() <= 0) {
-            throw new IllegalArgumentException(
-                    "Product price must be a positive number.");
-        }
-        if (product.getCategory() == null || product.getCategory().isBlank()) {
-            throw new IllegalArgumentException(
-                    "Product category is required.");
-        }
-        if (product.getStockQuantity() == null || product.getStockQuantity() < 0) {
-            throw new IllegalArgumentException(
-                    "Stock quantity must be non-negative.");
-        }
-    }
-
-    /**
-     * Validates only the fields present in a PATCH request.
-     *
-     * Unlike full validation, this method only checks fields that
-     * were actually provided (non-null). Missing fields are left
-     * unchanged on the existing product.
-     *
-     * @param patch the partial product object to validate
-     * @throws IllegalArgumentException if any provided field has an invalid value
-     */
-    private void validatePatchProduct(Product patch) {
-        if (patch.getName() != null && patch.getName().trim().length() < 2) {
-            throw new IllegalArgumentException(
-                    "Product name must be at least 2 characters long.");
-        }
-        if (patch.getPrice() != null && patch.getPrice() <= 0) {
-            throw new IllegalArgumentException(
-                    "Product price must be a positive number.");
-        }
-        if (patch.getCategory() != null && patch.getCategory().isBlank()) {
-            throw new IllegalArgumentException(
-                    "Product category cannot be blank.");
-        }
-        if (patch.getStockQuantity() != null && patch.getStockQuantity() < 0) {
-            throw new IllegalArgumentException(
-                    "Stock quantity must be non-negative.");
-        }
-    }
 }
