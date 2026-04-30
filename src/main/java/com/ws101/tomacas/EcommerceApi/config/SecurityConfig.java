@@ -98,8 +98,9 @@ public class SecurityConfig {
                 // Public: anyone can view products
                 .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
 
-                // Public: registration endpoint
+                // Public: registration and CSRF token endpoints
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
 
                 // Public: login and logout pages
                 .requestMatchers("/login", "/logout").permitAll()

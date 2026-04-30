@@ -3,10 +3,12 @@ package com.ws101.tomacas.EcommerceApi.controller;
 import com.ws101.tomacas.EcommerceApi.dto.RegisterUserDto;
 import com.ws101.tomacas.EcommerceApi.model.User;
 import com.ws101.tomacas.EcommerceApi.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -34,6 +36,25 @@ public class AuthController {
      */
     public AuthController(AuthService authService) {
         this.authService = authService;
+    }
+
+    /**
+     * Returns the current CSRF token for use by frontend JavaScript.
+     *
+     * <p>This endpoint solves the cross-origin cookie issue where
+     * the frontend (on a different port) cannot read the CSRF cookie
+     * set by the backend via {@code document.cookie}.</p>
+     *
+     * @param request the HTTP request containing the CSRF token attribute
+     * @return a JSON object with the CSRF token and header name
+     */
+    @GetMapping("/csrf")
+    public ResponseEntity<Map<String, String>> getCsrfToken(HttpServletRequest request) {
+        CsrfToken token = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+        return ResponseEntity.ok(Map.of(
+                "token", token.getToken(),
+                "headerName", token.getHeaderName()
+        ));
     }
 
     /**
