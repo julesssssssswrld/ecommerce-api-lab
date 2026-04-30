@@ -18,7 +18,7 @@ import jakarta.validation.constraints.Size;
  */
 public class RegisterUserDto {
 
-    /** Username — required, 3-20 characters. */
+    /** Username — required, 8-20 alphanumeric characters. */
     @NotBlank(message = "Username is required")
     @Size(min = 8, max = 20, message = "Username must be between 8 and 20 characters")
     @Pattern(regexp = "^[a-zA-Z0-9]+$", message = "Username must be alphanumeric with no spaces")

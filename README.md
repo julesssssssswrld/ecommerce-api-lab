@@ -74,7 +74,7 @@ Validation is enforced using **Jakarta Bean Validation** (`spring-boot-starter-v
 
 | Field      | Constraint                         | Error Message |
 |------------|------------------------------------|---------------|
-| `username` | `@NotBlank`, `@Size(min=3, max=20)` | "Username must be between 3 and 20 characters" |
+| `username` | `@NotBlank`, `@Size(min=8, max=20)`, `@Pattern(alphanumeric)` | "Username must be between 8 and 20 characters" |
 | `password` | `@NotBlank`, `@Size(min=8)`        | "Password must be at least 8 characters long" |
 | `role`     | `@NotNull`                         | "Role is required" |
 
