@@ -4,29 +4,32 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Spring Security configuration for session-based authentication.
+ * Spring Security configuration for stateless JWT authentication.
  *
- * <p>Configures the security filter chain with the following rules:</p>
+ * <p>Configures the security filter chain to use JWT tokens instead
+ * of server-side sessions. Key differences from session-based auth:</p>
  * <ul>
- *   <li>Public endpoints: GET products, register, login page</li>
- *   <li>Admin-only: DELETE products, user management</li>
- *   <li>Authenticated: orders, account info</li>
- *   <li>CSRF protection enabled with cookie-based token repository</li>
- *   <li>Session-based auth using form login</li>
+ *   <li>CSRF is disabled (stateless APIs don't need it)</li>
+ *   <li>Sessions are set to STATELESS (no JSESSIONID cookies)</li>
+ *   <li>A custom {@link JwtAuthenticationFilter} runs before the
+ *       default {@link UsernamePasswordAuthenticationFilter}</li>
+ *   <li>Login is handled via a REST endpoint, not form login</li>
  * </ul>
  *
  * @author Jules Ian C. Tomacas
@@ -35,6 +38,21 @@ import jakarta.servlet.http.HttpServletResponse;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final UserDetailsService userDetailsService;
+
+    /**
+     * Constructs the security configuration with required dependencies.
+     *
+     * @param jwtAuthFilter      the JWT filter to register in the chain
+     * @param userDetailsService the service for loading user details
+     */
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter,
+                          UserDetailsService userDetailsService) {
+        this.jwtAuthFilter = jwtAuthFilter;
+        this.userDetailsService = userDetailsService;
+    }
 
     /**
      * Creates a BCrypt password encoder bean.
@@ -53,6 +71,9 @@ public class SecurityConfig {
     /**
      * Exposes the authentication manager bean for programmatic use.
      *
+     * <p>Required by the login endpoint to authenticate credentials
+     * before issuing a JWT token.</p>
+     *
      * @param config the authentication configuration
      * @return the configured authentication manager
      * @throws Exception if an error occurs during configuration
@@ -64,12 +85,32 @@ public class SecurityConfig {
     }
 
     /**
-     * Configures the HTTP security filter chain.
+     * Configures the authentication provider with our user details
+     * service and password encoder.
      *
-     * <p>Defines which endpoints are public, which require
-     * authentication, and which require specific roles. Enables
-     * form login and CSRF protection with a cookie-based token
-     * for compatibility with frontend JavaScript.</p>
+     * @return the configured DAO authentication provider
+     */
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    /**
+     * Configures the HTTP security filter chain for JWT authentication.
+     *
+     * <p>Key configuration:</p>
+     * <ul>
+     *   <li><b>Stateless Sessions:</b> {@code SessionCreationPolicy.STATELESS}
+     *       ensures no HTTP sessions are created or used</li>
+     *   <li><b>CSRF Disabled:</b> Not needed for stateless JWT APIs</li>
+     *   <li><b>JWT Filter:</b> Runs before {@code UsernamePasswordAuthenticationFilter}
+     *       to authenticate requests via Bearer tokens</li>
+     *   <li><b>Public Endpoints:</b> Login, register, and GET product
+     *       endpoints are accessible without a token</li>
+     * </ul>
      *
      * @param http the HTTP security builder
      * @return the configured security filter chain
@@ -78,34 +119,27 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
-        // Use a request handler that does not require the CSRF token
-        // to be resolved before the request body is read, which is
-        // needed for SPAs sending JSON with fetch()
-        CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
-
         http
             // Enable CORS using the WebConfig CORS mappings
             .cors(Customizer.withDefaults())
 
-            // CSRF protection with cookie-based token for frontend JS
-            .csrf(csrf -> csrf
-                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                .csrfTokenRequestHandler(requestHandler)
-            )
+            // Disable CSRF — stateless JWT APIs don't need CSRF protection
+            .csrf(csrf -> csrf.disable())
+
+            // Configure session management to be stateless (no HTTP sessions)
+            .sessionManagement(session ->
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
             // Authorization rules
             .authorizeHttpRequests(auth -> auth
                 // Public: anyone can view products
                 .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
 
-                // Public: registration and CSRF token endpoints
+                // Public: registration and login endpoints
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
 
-                // Public: login and logout pages
-                .requestMatchers("/login", "/logout").permitAll()
-
-                // Admin only: delete products and manage users
+                // Admin only: delete products
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasRole("ADMIN")
 
                 // Admin and Seller: create and update products
@@ -117,30 +151,17 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
 
-            // Exception handling for REST API
-            .exceptionHandling(exceptions -> exceptions
-                .authenticationEntryPoint((request, response, authException) -> 
+            // Set the authentication provider
+            .authenticationProvider(authenticationProvider())
+
+            // Add JWT filter before the default UsernamePasswordAuthenticationFilter
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+
+            // Exception handling: return 401 JSON instead of redirect
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) ->
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")
                 )
-            )
-
-            // Enable form login with REST-friendly success/failure handlers
-            .formLogin(form -> form
-                .successHandler((request, response, authentication) -> response.setStatus(HttpServletResponse.SC_OK))
-                .failureHandler((request, response, exception) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentication Failed"))
-            )
-
-            // Enable logout with session invalidation
-            .logout(logout -> logout
-                .logoutUrl("/logout")
-                .logoutSuccessUrl("/login?logout")
-                .invalidateHttpSession(true)
-                .deleteCookies("JSESSIONID")
-            )
-
-            // Session management: create session when needed
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
             );
 
         return http.build();
