@@ -1,14 +1,18 @@
 package com.ws101.tomacas.EcommerceApi.controller;
 
+import com.ws101.tomacas.EcommerceApi.config.JwtUtil;
+import com.ws101.tomacas.EcommerceApi.dto.LoginRequestDto;
 import com.ws101.tomacas.EcommerceApi.dto.RegisterUserDto;
 import com.ws101.tomacas.EcommerceApi.model.User;
 import com.ws101.tomacas.EcommerceApi.service.AuthService;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -16,45 +20,78 @@ import java.util.Map;
 /**
  * REST controller for authentication operations.
  *
- * <p>Provides endpoints for user registration and retrieving
- * the currently authenticated user's information. Login and
- * logout are handled by Spring Security's form login mechanism.</p>
+ * <p>Provides endpoints for user registration, JWT-based login,
+ * and retrieving the currently authenticated user's information.
+ * Login returns a JWT token that the client must include in
+ * subsequent requests via the {@code Authorization: Bearer} header.</p>
  *
  * @author Jules Ian C. Tomacas
  * @see AuthService
+ * @see JwtUtil
  */
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
     private final AuthService authService;
+    private final AuthenticationManager authenticationManager;
+    private final JwtUtil jwtUtil;
 
     /**
-     * Constructs the controller with the auth service.
+     * Constructs the controller with required dependencies.
      *
-     * @param authService the service handling registration logic
+     * @param authService           the service handling registration logic
+     * @param authenticationManager the manager for credential verification
+     * @param jwtUtil               the utility for JWT token generation
      */
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService,
+                          AuthenticationManager authenticationManager,
+                          JwtUtil jwtUtil) {
         this.authService = authService;
+        this.authenticationManager = authenticationManager;
+        this.jwtUtil = jwtUtil;
     }
 
     /**
-     * Returns the current CSRF token for use by frontend JavaScript.
+     * Authenticates a user and returns a JWT token.
      *
-     * <p>This endpoint solves the cross-origin cookie issue where
-     * the frontend (on a different port) cannot read the CSRF cookie
-     * set by the backend via {@code document.cookie}.</p>
+     * <p>Accepts a JSON body with {@code username} and {@code password}.
+     * On successful authentication, generates a signed JWT containing
+     * the user's identity and returns it in the response body.</p>
      *
-     * @param request the HTTP request containing the CSRF token attribute
-     * @return a JSON object with the CSRF token and header name
+     * @param loginRequest the login credentials
+     * @return a JSON object containing the JWT token
      */
-    @GetMapping("/csrf")
-    public ResponseEntity<Map<String, String>> getCsrfToken(HttpServletRequest request) {
-        CsrfToken token = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
-        return ResponseEntity.ok(Map.of(
-                "token", token.getToken(),
-                "headerName", token.getHeaderName()
-        ));
+    @PostMapping("/login")
+    public ResponseEntity<Map<String, Object>> login(
+            @Valid @RequestBody LoginRequestDto loginRequest) {
+
+        try {
+            // Authenticate credentials against the database
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            loginRequest.getUsername(),
+                            loginRequest.getPassword()
+                    )
+            );
+
+            // Generate JWT token for the authenticated user
+            User user = (User) authentication.getPrincipal();
+            String token = jwtUtil.generateToken(user);
+
+            Map<String, Object> response = Map.of(
+                    "token", token,
+                    "username", user.getUsername(),
+                    "role", user.getRole().name(),
+                    "message", "Login successful"
+            );
+
+            return ResponseEntity.ok(response);
+
+        } catch (BadCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Invalid username or password"));
+        }
     }
 
     /**
@@ -86,8 +123,8 @@ public class AuthController {
      * Returns the currently authenticated user's information.
      *
      * <p>Uses {@code @AuthenticationPrincipal} to inject the
-     * logged-in user directly from the security context. Returns
-     * 401 if no user is authenticated.</p>
+     * logged-in user directly from the security context (populated
+     * by the JWT filter). Returns 401 if no valid token was provided.</p>
      *
      * @param user the currently logged-in user
      * @return the user's ID, username, and role
