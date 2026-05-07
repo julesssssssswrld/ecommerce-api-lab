@@ -1,9 +1,9 @@
-# E-Commerce REST API — Lab 9 (Security & Validation)
+# E-Commerce REST API — Lab 10 (JWT Authentication)
 
-A RESTful API backend for an e-commerce product catalog built with **Spring Boot 4.0.5**, secured with **Spring Security** (session-based authentication) and **Bean Validation**. Data is persisted to a MySQL database via Spring Data JPA and Hibernate.
+A RESTful API backend for an e-commerce product catalog built with **Spring Boot 4.0.5**, secured with **Spring Security** and **JWT (JSON Web Token)** authentication. Data is persisted to a MySQL database via Spring Data JPA and Hibernate.
 
 **Authors:** Jules Ian C. Tomacas & Jovan P. Atencio  
-**Course:** WS101 — Laboratory 9 (Securing the API with Sessions & Input Validation)
+**Course:** WS101 — Laboratory 10 (Securing the API with JWT Authentication)
 
 ---
 
@@ -21,34 +21,34 @@ A RESTful API backend for an e-commerce product catalog built with **Spring Boot
 
 ## Security Architecture
 
-### Session-Based Authentication (How It Works)
+### JWT Authentication (How It Works)
 
-This API uses **HTTP Session-Based Authentication** with Form Login — not JWT tokens.
+This API uses **stateless JWT (JSON Web Token)** authentication — not server-side sessions.
 
 ```
 ┌──────────┐                    ┌──────────────┐
-│  Client  │  POST /login       │  Spring Boot │
-│ (Browser)│ ──────────────────>│    Server    │
-│          │  username+password  │              │
+│  Client  │  POST /api/v1/    │  Spring Boot │
+│ (Browser)│  auth/login        │    Server    │
+│          │ ──────────────────>│              │
+│          │  {username,password}│              │
 │          │                    │  ┌──────────┐ │
-│          │  Set-Cookie:       │  │ Security │ │
-│          │ <──────────────────│  │  Filter  │ │
-│          │  JSESSIONID=abc123 │  │  Chain   │ │
+│          │  { "token": "..." }│  │  JwtUtil │ │
+│          │ <──────────────────│  │ generate │ │
 │          │                    │  └──────────┘ │
 │          │                    │              │
 │          │  GET /api/v1/orders│  ┌──────────┐ │
-│          │ ──────────────────>│  │ Session  │ │
-│          │  Cookie:           │  │  Store   │ │
-│          │  JSESSIONID=abc123 │  │(Server)  │ │
+│          │ ──────────────────>│  │  JWT     │ │
+│          │  Authorization:    │  │  Filter  │ │
+│          │  Bearer eyJhbG...  │  │ validate │ │
 │          │                    │  └──────────┘ │
 └──────────┘                    └──────────────┘
 ```
 
-1. **Login Flow**: The client sends a `POST /login` with `username` and `password` (plus a CSRF token). Spring Security verifies the credentials against the database (BCrypt hash comparison).
-2. **Session Creation**: On success, the server creates an HTTP session and sends back a `JSESSIONID` cookie.
-3. **Subsequent Requests**: The browser automatically includes the `JSESSIONID` cookie with every request. Spring Security reads the session to identify the user.
-4. **Logout**: `POST /logout` invalidates the session and clears the cookie.
-5. **CSRF Protection**: All state-changing requests (POST, PUT, DELETE, PATCH) require a valid CSRF token, delivered via a cookie named `XSRF-TOKEN`.
+1. **Login Flow**: The client sends a `POST /api/v1/auth/login` with `username` and `password` as JSON. Spring Security verifies the credentials against the database (BCrypt hash comparison).
+2. **Token Generation**: On success, the server generates a signed JWT containing the user's identity and returns it in the response body.
+3. **Subsequent Requests**: The client includes the JWT in the `Authorization: Bearer <token>` header with every request to protected endpoints.
+4. **Token Validation**: The `JwtAuthenticationFilter` extracts and validates the token on each request, setting the security context if valid.
+5. **Logout**: The client simply discards the stored token — no server-side session to invalidate.
 
 ### Role-Based Access Control (RBAC)
 
@@ -77,6 +77,13 @@ Validation is enforced using **Jakarta Bean Validation** (`spring-boot-starter-v
 | `username` | `@NotBlank`, `@Size(min=8, max=20)`, `@Pattern(alphanumeric)` | "Username must be between 8 and 20 characters" |
 | `password` | `@NotBlank`, `@Size(min=8)`        | "Password must be at least 8 characters long" |
 | `role`     | `@NotNull`                         | "Role is required" |
+
+### Login (`LoginRequestDto`)
+
+| Field      | Constraint   | Error Message |
+|------------|--------------|---------------|
+| `username` | `@NotBlank`  | "Username is required" |
+| `password` | `@NotBlank`  | "Password is required" |
 
 ### Product Creation (`CreateProductDto`)
 
@@ -150,12 +157,11 @@ When validation fails, the API returns a `400 Bad Request` with:
 
 ### Authentication
 
-| Method | Endpoint              | Auth Required | Description |
-|--------|-----------------------|---------------|-------------|
-| POST   | `/api/v1/auth/register` | No          | Register a new user |
-| POST   | `/login`              | No            | Log in (form login) |
-| POST   | `/logout`             | Yes           | Log out (invalidate session) |
-| GET    | `/api/v1/auth/me`     | Yes           | Get current user info |
+| Method | Endpoint                | Auth Required | Description |
+|--------|-------------------------|---------------|-------------|
+| POST   | `/api/v1/auth/register` | No            | Register a new user |
+| POST   | `/api/v1/auth/login`    | No            | Log in and receive a JWT token |
+| GET    | `/api/v1/auth/me`       | Yes (Bearer)  | Get current user info |
 
 ### Products
 
@@ -223,16 +229,19 @@ When validation fails, the API returns a `400 Bad Request` with:
 src/main/java/com/ws101/tomacas/EcommerceApi/
 ├── EcommerceApiApplication.java      # Spring Boot entry point
 ├── config/
-│   ├── SecurityConfig.java           # Security filter chain, RBAC rules
+│   ├── SecurityConfig.java           # JWT security filter chain, RBAC rules
+│   ├── JwtUtil.java                  # JWT token generation & validation
+│   ├── JwtAuthenticationFilter.java  # Bearer token extraction filter
 │   ├── WebConfig.java                # CORS configuration
 │   └── package-info.java
 ├── controller/
-│   ├── AuthController.java           # Registration & current user endpoints
+│   ├── AuthController.java           # Login, registration & current user
 │   ├── OrderController.java          # Order CRUD (secured)
 │   ├── ProductController.java        # Product CRUD (role-based)
 │   ├── GlobalExceptionHandler.java   # Validation + security error handler
 │   └── package-info.java
 ├── dto/
+│   ├── LoginRequestDto.java          # Login request (validated)
 │   ├── RegisterUserDto.java          # Registration request (validated)
 │   ├── CreateProductDto.java         # Product creation (validated)
 │   ├── UpdateProductDto.java         # Product patch (validated)
@@ -265,4 +274,4 @@ src/main/java/com/ws101/tomacas/EcommerceApi/
 
 ## Development Notes
 
-The core backend architecture, entity relationships, and REST controller design were developed manually by the project members. For the complex integration of Spring Security's session-based authentication with CSRF token handling and the implementation of Bean Validation with custom error responses, AI assistance was utilized for targeted guidance and code refinement.
+The core backend architecture, entity relationships, and REST controller design were developed manually by the project members. For the migration from session-based authentication to stateless JWT authentication, including the implementation of the JWT utility service, authentication filter, and security configuration refactoring, AI assistance was utilized for targeted guidance and code refinement.

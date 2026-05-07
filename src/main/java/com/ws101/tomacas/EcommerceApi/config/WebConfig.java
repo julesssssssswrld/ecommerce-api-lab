@@ -9,15 +9,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  *
  * <p>Allows the frontend application (running on a different origin,
  * such as localhost:5500 via Live Server) to communicate with this
- * backend API. Without this configuration, the browser would block
- * cross-origin requests due to the Same-Origin Policy.</p>
+ * backend API. Configured for JWT authentication — no cookies are
+ * needed, so {@code allowCredentials} is set to {@code false}.</p>
  *
- * <p>This configuration permits:</p>
- * <ul>
- *   <li>Origins: {@code http://localhost:5500} and {@code http://127.0.0.1:5500}</li>
- *   <li>Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS</li>
- *   <li>Headers: Authorization, Content-Type</li>
- * </ul>
+ * <p>The {@code Authorization} header is exposed so the frontend
+ * can send JWT Bearer tokens with each request.</p>
  *
  * @author Jules Ian C. Tomacas
  * @author Jovan P. Atencio
@@ -28,16 +24,15 @@ public class WebConfig implements WebMvcConfigurer {
     /**
      * Configures global CORS mappings for all API endpoints.
      *
-     * <p>Registers CORS rules that allow the frontend to make
-     * requests to any endpoint under {@code /api/**}. The allowed
-     * origins correspond to the ports commonly used by VS Code
-     * Live Server and similar local development servers.</p>
+     * <p>Since JWT authentication uses the {@code Authorization} header
+     * instead of cookies, we no longer need separate CORS entries for
+     * {@code /login} and {@code /logout}. All auth goes through
+     * {@code /api/**} endpoints.</p>
      *
      * @param registry the CORS registry to add mappings to
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        // CORS for API endpoints (products, orders, auth/csrf, auth/register, auth/me)
         registry.addMapping("/api/**")
                 .allowedOrigins(
                         "http://localhost:5500",
@@ -47,29 +42,7 @@ public class WebConfig implements WebMvcConfigurer {
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .allowCredentials(true);
-
-        // CORS for login/logout (session-based auth)
-        registry.addMapping("/login")
-                .allowedOrigins(
-                        "http://localhost:5500",
-                        "http://127.0.0.1:5500",
-                        "http://localhost:5501",
-                        "http://127.0.0.1:5501"
-                )
-                .allowedMethods("GET", "POST", "OPTIONS")
-                .allowedHeaders("*")
-                .allowCredentials(true);
-
-        registry.addMapping("/logout")
-                .allowedOrigins(
-                        "http://localhost:5500",
-                        "http://127.0.0.1:5500",
-                        "http://localhost:5501",
-                        "http://127.0.0.1:5501"
-                )
-                .allowedMethods("GET", "POST", "OPTIONS")
-                .allowedHeaders("*")
-                .allowCredentials(true);
+                .exposedHeaders("Authorization")
+                .allowCredentials(false);
     }
 }
